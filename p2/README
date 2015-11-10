@@ -1,0 +1,3 @@
+to compile, use make
+to run , use ./vm [replacement algo code] < [inputfile]
+to generate input, ./input_gen [requests] >> [inputfileName]
