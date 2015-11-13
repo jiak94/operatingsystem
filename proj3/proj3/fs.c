@@ -176,7 +176,7 @@ int file_create(char *name, int size)
 		printf("file created: %s, inode %d, size %d\n", name, inodeNum, size);
 
 		free(tmp);
-		return 0;
+		return 0;;
 }
 
 int file_cat(char *name)
@@ -363,6 +363,8 @@ int file_remove(char *name)
 
         memset(&curDir.dentry[curDir.numEntry].name[0], 0,sizeof(curDir.dentry[curDir.numEntry].name));
         curDir.dentry[curDir.numEntry].inode = -1;
+
+        inodeMap[inodeNum] = 0;
 
 
         curDir.numEntry--;
