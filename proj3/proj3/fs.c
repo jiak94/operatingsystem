@@ -9,6 +9,7 @@ char inodeMap[MAX_INODE / 8];
 char blockMap[MAX_BLOCK / 8];
 Inode inode[MAX_INODE];
 SuperBlock superBlock;
+Dentry dentry[MAX_INODE];
 Dentry curDir;
 int curDirBlock;
 
@@ -239,6 +240,7 @@ int file_read(char *name, int offset, int size)
 		char *substring;
 		substring = malloc(102400);
 		printf("%s\n", strncpy(substring, string+offset, size));
+		gettimeofday(&(inode[inodeNum].lastAccess), NULL);
 
 		free(string);
 		free(substring);
@@ -300,6 +302,7 @@ int file_write(char *name, int offset, int size, char *buf)
 		{
 			disk_write(inode[inodeNum].directBlock[i], newString);
 		}
+		gettimeofday(&(inode[inodeNum].lastAccess), NULL);
 
 		free(string);
 		free(newString);
@@ -358,7 +361,7 @@ int file_remove(char *name)
         gettimeofday(&(inode[inodeNum].lastAccess), NULL);
 
         inode[inodeNum].size = 0;
-        inode[inodeNum].blockCount = numBlock;
+        inode[inodeNum].blockCount = 0;
 
 
         memset(&curDir.dentry[curDir.numEntry].name[0], 0,sizeof(curDir.dentry[curDir.numEntry].name));
@@ -390,8 +393,11 @@ int dir_make(char* name)
         inode[inodeNum].type = directory;
         inode[inodeNum].owner = 1;
         inode[inodeNum].group = 2;
+        inode[inodeNum].size = 1;
         gettimeofday(&(inode[inodeNum].created), NULL);
         gettimeofday(&(inode[inodeNum].lastAccess), NULL);
+
+        dentry[inodeNum].numEntry = 0;
 
         strncpy(curDir.dentry[curDir.numEntry].name, name, strlen(name));
         curDir.dentry[curDir.numEntry].name[strlen(name)] = '\0';
@@ -403,21 +409,57 @@ int dir_make(char* name)
 
 int dir_remove(char *name)
 {
-		int inodeNum = search_cur_dir(name);
-        if (inodeNum < 0) {
-             printf("Error: no such directory\n");
-             return -1;
-        }
+	int inodeNum = search_cur_dir(name);
+    if (inodeNum < 0) {
+       	printf("Error: no such directory\n");
+        return -1;
+    }
 
-        if (curDir.numEntry == 0) {
-            printf("Error: current directory is empty\n");
-            return -1;
-        }
+    if (curDir.numEntry == 0) {
+        printf("Error: current directory is empty\n");
+        return -1;
+    }
+
+    if (dentry[inodeNum].numEntry != 0)
+    {
+    	printf("Error: the directory is not empty\n");
+    }
+
+    superBlock.freeInodeCount++;
+
+    inode[inodeNum].owner = 0;
+    inode[inodeNum].group = 0;
+    gettimeofday(&(inode[inodeNum].created), NULL);
+    gettimeofday(&(inode[inodeNum].lastAccess), NULL);
+
+    inode[inodeNum].size = 0;
+    inode[inodeNum].blockCount = 0;
+
+
+    memset(&curDir.dentry[curDir.numEntry].name[0], 0,sizeof(curDir.dentry[curDir.numEntry].name));
+    curDir.dentry[curDir.numEntry].inode = -1;
+
+    inodeMap[inodeNum] = 0;
+
+
+    curDir.numEntry--;
 }
 
 int dir_change(char* name)
 {
-		printf("Not implemented yet.\n");
+		//printf("Not implemented yet.\n");
+		int inodeNum = search_cur_dir(name);
+		if (name < 0)
+		{
+			printf("Error: no Such directory\n");
+			return -1;
+		}
+		if (inode[inodeNum].type != directory)
+		{
+			printf("Error: no such directory\n");
+		}
+
+		curDir = dentry[inodeNum];
 }
 
 int ls()
