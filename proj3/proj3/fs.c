@@ -67,6 +67,8 @@ int fs_mount(char *name)
 				curDir.dentry[0].name[1] = '\0';
 				curDir.dentry[0].inode = rootInode;
 				disk_write(curDirBlock, (char*)&curDir);
+
+				dentry[rootInode] = curDir;
 		}
 		return 0;
 }
@@ -177,6 +179,8 @@ int file_create(char *name, int size)
 		printf("file created: %s, inode %d, size %d\n", name, inodeNum, size);
 
 		free(tmp);
+
+		dentry[curDir.dentry[0].inode] = curDir;
 		return 0;;
 }
 
@@ -371,6 +375,8 @@ int file_remove(char *name)
 
 
         curDir.numEntry--;
+
+        dentry[curDir.dentry[0].inode] = curDir;
         return 0;
 }
 
@@ -397,13 +403,21 @@ int dir_make(char* name)
         gettimeofday(&(inode[inodeNum].created), NULL);
         gettimeofday(&(inode[inodeNum].lastAccess), NULL);
 
-        dentry[inodeNum].numEntry = 0;
+        dentry[inodeNum].numEntry = 2;
+        strncpy(dentry[inodeNum].dentry[0].name, ".", strlen("."));
+        dentry[inodeNum].dentry[0].inode = inodeNum;
+
+        strncpy(dentry[inodeNum].dentry[1].name, "..", strlen(".."));
+        dentry[inodeNum].dentry[1].inode = curDir.dentry[0].inode;
 
         strncpy(curDir.dentry[curDir.numEntry].name, name, strlen(name));
         curDir.dentry[curDir.numEntry].name[strlen(name)] = '\0';
         curDir.dentry[curDir.numEntry].inode = inodeNum;
         printf("curdir %s, name %s\n", curDir.dentry[curDir.numEntry].name, name);
+        
         curDir.numEntry++;
+
+        dentry[curDir.dentry[0].inode] = curDir;
         return 0;
 }
 
@@ -443,6 +457,7 @@ int dir_remove(char *name)
 
 
     curDir.numEntry--;
+    dentry[curDir.dentry[0].inode] = curDir;
 }
 
 int dir_change(char* name)
@@ -459,6 +474,8 @@ int dir_change(char* name)
 			printf("Error: no such directory\n");
 		}
 
+		printf("InodeNum: %d\n", inodeNum);
+		printf("%d\n", dentry[inodeNum].numEntry);
 		curDir = dentry[inodeNum];
 }
 
