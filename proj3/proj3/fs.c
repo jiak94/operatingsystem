@@ -207,6 +207,7 @@ int file_cat(char *name)
 			disk_read(inode[inodeNum].directBlock[i], string);
 			printf("%s\n", string);
 		}
+		gettimeofday(&(inode[inodeNum].lastAccess), NULL);
 		//free(*string);
 		//printf("\n");
 		return 1;
@@ -434,9 +435,10 @@ int dir_remove(char *name)
         return -1;
     }
 
-    if (dentry[inodeNum].numEntry != 0)
+    if (dentry[inodeNum].numEntry > 2)
     {
     	printf("Error: the directory is not empty\n");
+    	return -1;
     }
 
     superBlock.freeInodeCount++;
@@ -472,8 +474,9 @@ int dir_change(char* name)
 		if (inode[inodeNum].type != directory)
 		{
 			printf("Error: no such directory\n");
+			return -1;
 		}
-
+		gettimeofday(&(inode[inodeNum].lastAccess), NULL);
 		printf("InodeNum: %d\n", inodeNum);
 		printf("%d\n", dentry[inodeNum].numEntry);
 		curDir = dentry[inodeNum];
