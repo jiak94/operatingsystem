@@ -11,6 +11,7 @@ Inode inode[MAX_INODE];
 SuperBlock superBlock;
 Dentry dentry[MAX_INODE];
 Dentry curDir;
+IndirectBlock indirectBlockArray[MAX_INODE];
 int curDirBlock;
 
 int fs_mount(char *name)
@@ -23,9 +24,13 @@ int fs_mount(char *name)
 				disk_read(0, (char*) &superBlock);
 				disk_read(1, inodeMap);
 				disk_read(2, blockMap);
+				disk_read(3, (char*) &dentry);
+				disk_read(4, (char*) &indirectBlockArray);
+				//printf("size of indirectArray: %lu\n", sizeof(indirectBlockArray));
+				//printf("size of dentry: %lu\n", sizeof(dentry));
 				for(i = 0; i < numInodeBlock; i++)
 				{
-						index = i+3;
+						index = i+5;
 						disk_read(index, (char*) (inode+inode_index));
 						inode_index += (BLOCK_SIZE / sizeof(Inode));
 				}
@@ -35,7 +40,7 @@ int fs_mount(char *name)
 
 		} else {
 		// Init file system superblock, inodeMap and blockMap
-				superBlock.freeBlockCount = MAX_BLOCK - (1+1+1+numInodeBlock);
+				superBlock.freeBlockCount = MAX_BLOCK - (1+1+1+1+1+numInodeBlock);
 				superBlock.freeInodeCount = MAX_INODE;
 
 				//Init inodeMap
@@ -46,7 +51,7 @@ int fs_mount(char *name)
 				//Init blockMap
 				for(i = 0; i < MAX_BLOCK / 8; i++)
 				{
-						if(i < (1+1+1+numInodeBlock)) set_bit(blockMap, i, 1);
+						if(i < (1+1+1+1+1+numInodeBlock)) set_bit(blockMap, i, 1);
 						else set_bit(blockMap, i, 0);
 				}
 				//Init root dir
@@ -69,7 +74,11 @@ int fs_mount(char *name)
 				disk_write(curDirBlock, (char*)&curDir);
 
 				dentry[rootInode] = curDir;
+				//printf("size of indirectArray: %lu\n", sizeof(indirectBlockArray));
+				//printf("size of denry: %lu\n", sizeof(dentry));
 		}
+
+		//printf("size of Inode: %lu\n", sizeof(Inode));
 		return 0;
 }
 
@@ -80,9 +89,11 @@ int fs_umount(char *name)
 		disk_write(0, (char*) &superBlock);
 		disk_write(1, inodeMap);
 		disk_write(2, blockMap);
+		disk_write(3, (char*) &dentry);
+		disk_write(4, (char*) &indirectBlockArray);
 		for(i = 0; i < numInodeBlock; i++)
 		{
-				index = i+3;
+				index = i+5;
 				disk_write(index, (char*) (inode+inode_index));
 				inode_index += (BLOCK_SIZE / sizeof(Inode));
 		}
@@ -104,13 +115,102 @@ int search_cur_dir(char *name)
 		return -1;
 }
 
+int create_large_file(char *name, int size) {
+	if (size > 70656)
+	{
+		printf("File too large!\n");
+	}
+	int i;
+	int inodeNum = search_cur_dir(name);
+	if (inodeNum >= 0) {
+		printf("File create failed:  %s exist.\n", name);
+		return -1;
+	}
+
+	if(curDir.numEntry + 1 >= (BLOCK_SIZE / sizeof(DirectoryEntry))) {
+		printf("File create failed: directory is full!\n");
+		return -1;
+	}
+
+	int numBlock = size / BLOCK_SIZE;
+	if(size % BLOCK_SIZE > 0) numBlock++;
+	int indirect = numBlock - 10;
+
+	if(numBlock > superBlock.freeBlockCount) {
+		printf("File create failed: not enough space\n");
+		return -1;
+	}
+
+	if(superBlock.freeInodeCount < 1) {
+		printf("File create failed: not enough inode\n");
+		return -1;
+	}
+
+	char *tmp = (char*) malloc(sizeof(int) * size+1);
+	rand_string(tmp, size);
+	printf("rand_string = %s\n", tmp);
+
+	inodeNum = get_free_inode();
+	if(inodeNum < 0) {
+		printf("File_create error: not enough inode.\n");
+		return -1;
+	}
+
+	inode[inodeNum].type = file;
+	inode[inodeNum].owner = 1;
+	inode[inodeNum].group = 2;
+	gettimeofday(&(inode[inodeNum].created), NULL);
+	gettimeofday(&(inode[inodeNum].lastAccess), NULL);
+	inode[inodeNum].size = size;
+	inode[inodeNum].blockCount = numBlock;
+	inode[inodeNum].indirectBlock = indirect;
+
+	strncpy(curDir.dentry[curDir.numEntry].name, name, strlen(name));
+	curDir.dentry[curDir.numEntry].name[strlen(name)] = '\0';
+	curDir.dentry[curDir.numEntry].inode = inodeNum;
+	printf("curdir %s, name %s\n", curDir.dentry[curDir.numEntry].name, name);
+	curDir.numEntry++;
+
+	indirectBlockArray[inodeNum].inode = inodeNum;
+
+	for(i = 0; i < 10; i++)
+	{
+		int block = get_free_block();
+		if(block == -1) {
+			printf("File_create error: get_free_block failed\n");
+			return -1;
+		}
+		inode[inodeNum].directBlock[i] = block;
+		disk_write(block, tmp+(i*BLOCK_SIZE));
+	}
+
+	for (; i < numBlock; i++)
+	{
+		int block = get_free_block();
+		if (block == -1)
+		{
+			printf("File_create error: get_free_block failed\n");
+			return -1;
+		}
+		indirectBlockArray[inodeNum].indirectBlock[i-10] = block;
+		disk_write(block, tmp+(i*BLOCK_SIZE));
+	}
+	printf("file created: %s, inode %d, size %d\n", name, inodeNum, size);
+
+	free(tmp);
+
+	dentry[curDir.dentry[0].inode] = curDir;
+	return 0;
+}
+
 int file_create(char *name, int size)
 {
 		int i;
 
 		if(size >= SMALL_FILE) {
-				printf("Do not support files larger than %d bytes yet.\n", SMALL_FILE);
-				return -1;
+			//printf("Do not support files larger than %d bytes yet.\n", SMALL_FILE);
+			//return -1;
+			return create_large_file(name, size);
 		}
 
 		int inodeNum = search_cur_dir(name);
@@ -181,7 +281,7 @@ int file_create(char *name, int size)
 		free(tmp);
 
 		dentry[curDir.dentry[0].inode] = curDir;
-		return 0;;
+		return 0;
 }
 
 int file_cat(char *name)
@@ -194,21 +294,34 @@ int file_cat(char *name)
 			return -1;
 		}
 
-		int numBlock = inode[inodeNum].size / BLOCK_SIZE;
+		int numBlock = inode[inodeNum].blockCount;
+		int indirectBlock = inode[inodeNum].indirectBlock;
 
-		if (inode[inodeNum].size % BLOCK_SIZE > 0)
-		{
-			numBlock = numBlock + 1;
-		}
 
 		char *string;
-		string = malloc(numBlock);
-		for(i = 0; i < numBlock; i++) {
-			disk_read(inode[inodeNum].directBlock[i], string);
-			printf("%s\n", string);
+		string = malloc(102400);
+		if (numBlock > 10)
+		{
+			for(i = 0; i < numBlock; i++) {
+				disk_read(inode[inodeNum].directBlock[i], string);
+				printf("%s\n", string);
+			}
+
+			for (int i = 0; i < indirectBlock; i++)
+			{
+				disk_read(indirectBlockArray[inodeNum].indirectBlock[i], string);
+				printf("%s\n", string);
+			}
 		}
+		else {
+			for(i = 0; i < numBlock; i++) {
+				disk_read(inode[inodeNum].directBlock[i], string);
+				printf("%s\n", string);
+			}
+		}
+		
 		gettimeofday(&(inode[inodeNum].lastAccess), NULL);
-		//free(*string);
+		free(string);
 		//printf("\n");
 		return 1;
 }
@@ -232,10 +345,20 @@ int file_read(char *name, int offset, int size)
 		//printf("numBlock = %d\n", numBlock);
 
 		char *string;
+		char *temp;
 		string = malloc(102400);
+		temp = malloc(102400);
 		for(i = 0; i < numBlock; i++) {
-			disk_read(inode[inodeNum].directBlock[i], string);
+			if (i < 10)
+			{
+				disk_read(inode[inodeNum].directBlock[i], temp);
+			}
+			else {
+				disk_read(indirectBlockArray[inodeNum].indirectBlock[i - 10], temp);
+			}
+			
 			//printf("%s\n", string);
+			strcat(string, temp);
 		}
 		int length = strlen(string);
 		if (size + offset > length)
@@ -248,6 +371,7 @@ int file_read(char *name, int offset, int size)
 		gettimeofday(&(inode[inodeNum].lastAccess), NULL);
 
 		free(string);
+		free(temp);
 		free(substring);
 		//printf("\n");
 		return 1;
@@ -273,19 +397,28 @@ int file_write(char *name, int offset, int size, char *buf)
 			return -1;
 		}
 
-		int numBlock = inode[inodeNum].size / BLOCK_SIZE;
+		int numBlock = (inode[inodeNum].size + size) / BLOCK_SIZE;
 
-		if (inode[inodeNum].size % BLOCK_SIZE > 0)
+		if ((inode[inodeNum].size + size) % BLOCK_SIZE > 0)
 		{
 			numBlock = numBlock + 1;
 		}
 
 		char *string;
+		char *temp;
+		temp = malloc(102400);
 		string = malloc(102400);
 		for(i = 0; i < numBlock; i++) {
-			disk_read(inode[inodeNum].directBlock[i], string);
+			if (i < 10)
+			{
+				disk_read(inode[inodeNum].directBlock[i], temp);
+			}
+			else  {
+				disk_read(indirectBlockArray[inodeNum].indirectBlock[i - 10], temp);
+			}
+			strcat(string, temp);
 		}
-
+		printf("%lu\n", strlen(string));
 
 		char *newString, *secondPart;
 		newString = malloc(102400);
@@ -303,13 +436,23 @@ int file_write(char *name, int offset, int size, char *buf)
 		//paste to the new string
 		strcat(newString, secondPart);
 
+		printf("%lu\n", strlen(newString));
+
 		for (int i = 0; i < numBlock; i++)
 		{
-			disk_write(inode[inodeNum].directBlock[i], newString);
+			if (i < 10)
+			{
+				disk_write(inode[inodeNum].directBlock[i], newString+(i*BLOCK_SIZE));
+			}
+			else {
+				disk_write(indirectBlockArray[inodeNum].indirectBlock[i - 10], newString+(i*BLOCK_SIZE));
+			}
+			
 		}
 		gettimeofday(&(inode[inodeNum].lastAccess), NULL);
 
 		free(string);
+		free(temp);
 		free(newString);
 		free(writeString);
 		free(secondPart);
@@ -477,8 +620,8 @@ int dir_change(char* name)
 			return -1;
 		}
 		gettimeofday(&(inode[inodeNum].lastAccess), NULL);
-		printf("InodeNum: %d\n", inodeNum);
-		printf("%d\n", dentry[inodeNum].numEntry);
+		//printf("InodeNum: %d\n", inodeNum);
+		//printf("%d\n", dentry[inodeNum].numEntry);
 		curDir = dentry[inodeNum];
 }
 

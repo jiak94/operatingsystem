@@ -26,8 +26,15 @@ typedef struct {
 		int blockCount;
 		int directBlock[10];
 		int indirectBlock;
+		//int indirectBlockArray[128];
 		char padding[24];
 } Inode; // 128 byte
+
+typedef struct 
+{
+	int inode;
+	int indirectBlock[128];
+} IndirectBlock;
 
 typedef struct {
 		char name[MAX_FILE_NAME];
