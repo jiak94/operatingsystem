@@ -1,0 +1,12 @@
+Jiakuan Li
+
+project 3
+
+Operating System
+
+I have implement part1 and part2 and part3.
+
+There is a little problem within part3, that is, when I log out then log back in,
+I am unable to read the indirect block of the large file.
+
+All other things works perfect except the issue I mention above.
